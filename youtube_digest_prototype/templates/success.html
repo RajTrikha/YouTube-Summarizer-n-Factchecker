@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Success!</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 2rem; max-width: 800px; margin: auto; }
+        .code-block { background-color: #f4f4f4; padding: 1rem; border-radius: 4px; border: 1px solid #ddd; }
+        code { font-family: monospace; background-color: #e4e4e4; padding: 2px 4px; border-radius: 3px; }
+        .terminal { background-color: #2d2d2d; color: #f1f1f1; padding: 1rem; border-radius: 5px; font-family: monospace; }
+        .terminal p { margin: 0; }
+    </style>
+</head>
+<body>
+    <h1>✅ Authentication Successful!</h1>
+    <p>Your application has successfully received the tokens from Google.</p>
+    
+    <h2>Next Steps</h2>
+    <ol>
+        <li>
+            <p><strong>Copy the Refresh Token from your terminal.</strong></p>
+            <p>The backend script (<code>auth_backend.py</code>) has printed the full refresh token to the console where you are running it. It will look something like this:</p>
+            <div class="terminal">
+                <p>--- AUTH SUCCESSFUL ---</p>
+                <p>Access Token: 1/fF... </p>
+                <p><strong>Refresh Token: 1//0g...</strong></p>
+                <p>-----------------------</p>
+            </div>
+        </li>
+        <li>
+            <p><strong>Paste the token into <code>fetch_videos.py</code>.</strong></p>
+            <p>Open the <code>youtube_digest_prototype/fetch_videos.py</code> file and paste the token into the <code>USER_REFRESH_TOKEN</code> variable.</p>
+        </li>
+        <li>
+            <p><strong>Run the script.</strong></p>
+            <p>You can now run <code>python youtube_digest_prototype/fetch_videos.py</code> to fetch your recently liked videos.</p>
+        </li>
+    </ol>
+</body>
+</html>

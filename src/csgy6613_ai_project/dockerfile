@@ -1,0 +1,37 @@
+# Use an official Python runtime as a parent image
+FROM python:3.11-slim
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Create a non-root user
+RUN addgroup --system app && adduser --system --group app
+
+# Copy the requirements file first to leverage caching
+COPY requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy only the necessary application source code into the container
+COPY main_app.py .
+COPY api.py .
+COPY celery_app.py .
+COPY database.py .
+COPY models.py .
+COPY tasks.py .
+COPY ./agents ./agents
+COPY ./graph ./graph
+COPY ./services ./services
+
+# Change ownership to non-root user
+RUN chown -R app:app /app
+
+# Switch to non-root user
+USER app
+
+# Expose the port Gradio will run on (FastAPI default is 8000)
+EXPOSE 8000
+
+# Define the command to run the application using uvicorn
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
