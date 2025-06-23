@@ -6,8 +6,8 @@ Refer to the detailed documentation above - "Artificial Intelligence Project Rep
 
 | Name | NetID | 
 |----------|----------|
-| Swapnil Sharma | ss19753 |
-| Sindhu Jyoti Dutta | sd6201 |
+| Raj Trikha | rt2932 |
+
 
 
 ### Architecture:
