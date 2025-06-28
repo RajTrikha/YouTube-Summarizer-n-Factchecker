@@ -2,10 +2,38 @@ import os
 import httpx
 import json
 import asyncio
-from typing import List, Dict
+from typing import List, Dict, Optional
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
+from langchain_core.output_parsers import StrOutputParser
 from .state import GraphState
+import time
+from functools import wraps
+
+# Simplified rate limiting decorator
+def rate_limit(calls_per_minute=8):
+    """Simplified rate limiting decorator"""
+    def decorator(func):
+        last_called = [0.0]
+        
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            elapsed = time.time() - last_called[0]
+            min_interval = 60.0 / calls_per_minute
+            
+            if elapsed < min_interval:
+                await asyncio.sleep(min_interval - elapsed)
+            
+            last_called[0] = time.time()
+            
+            try:
+                return await func(*args, **kwargs)
+            except Exception as e:
+                if "429" in str(e) or "quota" in str(e).lower():
+                    await asyncio.sleep(60)
+                    return await func(*args, **kwargs)
+                raise
+        return wrapper
+    return decorator
 
 def get_video_info(state: GraphState, youtube_service) -> Dict:
     """Node to fetch the video transcript."""
@@ -15,7 +43,6 @@ def get_video_info(state: GraphState, youtube_service) -> Dict:
     if not video_id:
         return {"error": "Invalid YouTube URL provided. Please check the link and try again."}
     
-    # --- FIX: Ensure both transcript types are fetched correctly ---
     transcript = youtube_service.get_transcript(video_id, with_timestamps=False)
     timed_transcript = youtube_service.get_transcript(video_id, with_timestamps=True)
     
@@ -24,11 +51,12 @@ def get_video_info(state: GraphState, youtube_service) -> Dict:
     
     return {"video_id": video_id, "transcript": transcript, "timed_transcript": timed_transcript}
 
-
+@rate_limit(calls_per_minute=8)
 async def segment_transcript_into_chapters(state: GraphState, segmentation_agent) -> Dict:
     """Node to run the topic segmentation agent and map timestamps."""
     print("---NODE: SEGMENTING TRANSCRIPT---")
-    if state.get("error"): return {}
+    if state.get("error"): 
+        return {}
     
     if "timed_transcript" not in state or not state["timed_transcript"]:
         return {"error": "Failed to process video timeline. Cannot segment transcript."}
@@ -38,7 +66,7 @@ async def segment_transcript_into_chapters(state: GraphState, segmentation_agent
     
     chapters = await segmentation_agent.run(transcript)
     
-    # --- Accurate Timestamp Mapping ---
+    # Map timestamps efficiently
     current_search_index = 0
     for chapter in chapters:
         chapter_content_words = chapter.get("content", "").split()
@@ -46,7 +74,6 @@ async def segment_transcript_into_chapters(state: GraphState, segmentation_agent
             chapter['start_time'] = 0
             continue
         
-        # Find the start of the chapter by looking for the first few words
         start_phrase = " ".join(chapter_content_words[:10])
         start_index = -1
         for i in range(current_search_index, len(timed_transcript)):
@@ -58,67 +85,48 @@ async def segment_transcript_into_chapters(state: GraphState, segmentation_agent
             chapter['start_time'] = timed_transcript[start_index]['start']
             current_search_index = start_index
         else:
-            # Fallback if phrase not found
             chapter['start_time'] = timed_transcript[current_search_index]['start'] if current_search_index < len(timed_transcript) else 0
 
     return {"chapters": chapters}
 
-
+@rate_limit(calls_per_minute=6)
 async def generate_chapter_summaries(state: GraphState, summarizer_model) -> Dict:
     """Node to generate a summary for each identified chapter."""
     print("---NODE: GENERATING CHAPTER SUMMARIES---")
-    if state.get("error") or not state.get("chapters"): return {}
+    if state.get("error") or not state.get("chapters"): 
+        return {}
 
     chapters = state["chapters"]
     print(f"Processing {len(chapters)} chapters for summarization")
     
-    # Process each chapter with aggressive summarization
     processed_chapters = []
     
     for i, chapter in enumerate(chapters):
         chapter_text = chapter.get("content", "No content available for this chapter.")
         chapter_title = chapter.get('title', 'Untitled')
         
-        print(f"\n--- Processing Chapter {i+1}: {chapter_title} ---")
-        print(f"Original content length: {len(chapter_text.split())} words")
+        print(f"\n--- Processing Chapter {i + 1}: {chapter_title} ---")
         
-        # Try multiple approaches to get a proper summary
-        summary = await _force_summarization(chapter_text, chapter_title, summarizer_model)
+        if i > 0:
+            await asyncio.sleep(10)  # Delay between chapters
         
-        # Create processed chapter with both summary and original content
-        processed_chapter = {
+        summary = await _create_summary(chapter_text, chapter_title, summarizer_model)
+        
+        processed_chapters.append({
             "title": chapter_title,
             "chapter_summary": summary,
-            "content": chapter_text,  # Keep for timestamp mapping
             "start_time": chapter.get("start_time", 0)
-        }
-        
-        processed_chapters.append(processed_chapter)
-        
-        print(f"Final summary length: {len(summary.split())} words")
-        print(f"Summary preview: {summary[:150]}...")
-        
-        # Verify it's actually a summary
-        if len(summary.split()) > 100:
-            print("🚨 WARNING: Summary is still very long!")
-        else:
-            print("✅ Summary appears to be properly condensed")
+        })
     
-    # Generate overall summary from chapter summaries only
+    # Generate overall summary
+    await asyncio.sleep(8)
     summary_texts = [ch["chapter_summary"] for ch in processed_chapters]
     final_summary = await _create_overall_summary(summary_texts, processed_chapters, summarizer_model)
 
-    print(f"\n--- Final Results ---")
-    print(f"Generated {len(processed_chapters)} chapter summaries")
-    print(f"Overall summary length: {len(final_summary.split())} words")
-
     return {"chapters": processed_chapters, "summary": final_summary}
 
-
-async def _force_summarization(chapter_text: str, chapter_title: str, model) -> str:
-    """Aggressively force proper summarization with multiple attempts."""
-    
-    # First attempt - very strict prompt
+async def _create_summary(chapter_text: str, chapter_title: str, model) -> str:
+    """Create summary with original prompt structure."""
     strict_prompt = ChatPromptTemplate.from_template(
         """CRITICAL: You must create a SHORT summary. DO NOT reproduce the original text.
 
@@ -139,100 +147,37 @@ async def _force_summarization(chapter_text: str, chapter_title: str, model) -> 
     
     try:
         chain = strict_prompt | model | StrOutputParser()
-        summary = await chain.ainvoke({"title": chapter_title, "text": chapter_text})
+        summary = await chain.ainvoke({"title": chapter_title, "text": chapter_text[:1500]})
         
-        # Check if it's actually a summary
-        if _is_proper_summary(summary, chapter_text):
-            return summary.strip()
-            
+        # Simple validation - if too long, use fallback
+        if len(summary.split()) > 60:
+            return _fallback_summary(chapter_text, chapter_title)
+        
+        return summary.strip()
     except Exception as e:
-        print(f"First summarization attempt failed: {e}")
-    
-    # Second attempt - even more aggressive
-    aggressive_prompt = ChatPromptTemplate.from_template(
-        """You are a summarization bot. Your job is to create SHORT summaries.
+        print(f"Summarization failed: {e}")
+        return _fallback_summary(chapter_text, chapter_title)
 
-        FORBIDDEN: Do not copy text from the input
-        REQUIRED: Create 2-3 short bullet points only
-        
-        What is the main topic of this text? Answer in 2-3 bullet points:
-        
-        {text}
-        
-        Summary:"""
-    )
-    
-    try:
-        chain = aggressive_prompt | model | StrOutputParser()
-        summary = await chain.ainvoke({"text": chapter_text[:1000]})  # Limit input size
-        
-        if _is_proper_summary(summary, chapter_text):
-            return summary.strip()
-            
-    except Exception as e:
-        print(f"Second summarization attempt failed: {e}")
-    
-    # Final fallback - manual extraction
-    return _manual_summary_fallback(chapter_text, chapter_title)
-
-
-def _is_proper_summary(summary: str, original_text: str) -> bool:
-    """Check if the output is actually a summary and not the original text."""
-    summary_words = len(summary.split())
-    original_words = len(original_text.split())
-    
-    # Summary should be much shorter
-    if summary_words > original_words * 0.3:  # More than 30% of original
-        print(f"⚠️  Summary too long: {summary_words} words vs {original_words} original")
-        return False
-    
-    # Should contain bullet points or be very short
-    if summary_words > 100 and "•" not in summary and "-" not in summary:
-        print("⚠️  Summary doesn't appear to be in bullet format and is too long")
-        return False
-    
-    # Check for direct copying (basic check)
-    summary_lower = summary.lower()
-    original_lower = original_text.lower()
-    
-    # If more than 50% of summary words appear consecutively in original, it's likely copied
-    summary_phrases = [summary_lower[i:i+20] for i in range(0, len(summary_lower)-20, 10)]
-    copy_count = sum(1 for phrase in summary_phrases if phrase in original_lower)
-    
-    if copy_count > len(summary_phrases) * 0.5:
-        print("⚠️  Summary appears to be copied from original text")
-        return False
-    
-    return True
-
-
-def _manual_summary_fallback(text: str, title: str) -> str:
+def _fallback_summary(text: str, title: str) -> str:
     """Create a basic summary when AI fails."""
-    words = text.split()
-    
-    # Extract first few sentences as key points
-    sentences = text.split('. ')
-    key_sentences = sentences[:3]
-    
-    # Create manual bullet points
+    sentences = text.split('. ')[:3]
     summary_points = []
-    for sentence in key_sentences:
+    
+    for sentence in sentences:
         if len(sentence.strip()) > 10:
-            # Take first part of sentence and clean it up
-            clean_sentence = sentence.strip()[:100]
+            clean_sentence = sentence.strip()[:80]
             if not clean_sentence.endswith('.'):
                 clean_sentence += "..."
             summary_points.append(f"• {clean_sentence}")
     
     if not summary_points:
-        summary_points = [f"• Discussion about {title.lower()}", f"• Content covers approximately {len(words)} words of material"]
+        summary_points = [f"• Discussion about {title.lower()}", f"• Content covers video material"]
     
     return "\n".join(summary_points[:3])
 
-
+@rate_limit(calls_per_minute=6)
 async def _create_overall_summary(summary_texts: List[str], chapters: List[Dict], model) -> str:
     """Create overall summary from chapter summaries."""
-    
     combined_summaries = []
     for i, summary in enumerate(summary_texts):
         chapter_title = chapters[i]["title"]
@@ -260,7 +205,7 @@ async def _create_overall_summary(summary_texts: List[str], chapters: List[Dict]
         print(f"Error creating overall summary: {e}")
         return "Summary of key topics and insights from the video content."
 
-
+@rate_limit(calls_per_minute=6)
 async def extract_claims(state: GraphState, claim_extractor_model) -> Dict:
     """Node to extract verifiable claims from the transcript."""
     print("---NODE: EXTRACTING VERIFIABLE CLAIMS---")
@@ -293,17 +238,18 @@ async def extract_claims(state: GraphState, claim_extractor_model) -> Dict:
     chain = prompt | claim_extractor_model | StrOutputParser()
     
     try:
-        response_text = await chain.ainvoke({"transcript": transcript})
-        # Clean up the response to extract JSON
+        response_text = await chain.ainvoke({"transcript": transcript[:2000]})  # Limit input
         json_text = response_text.strip().lstrip("```json").rstrip("```").strip()
         claims = json.loads(json_text)
-        return {"claims": claims}
+        return {"claims": claims[:5]}  # Limit claims
     except json.JSONDecodeError as e:
         print(f"Error decoding JSON from claims response: {e}")
-        print(f"Raw response: {response_text}")
+        return {"claims": []}
+    except Exception as e:
+        print(f"Error extracting claims: {e}")
         return {"claims": []}
 
-
+@rate_limit(calls_per_minute=4)
 async def search_for_evidence(state: GraphState, search_query_model) -> Dict:
     """Node to search for evidence for the next claim to be fact-checked."""
     claim_index = len(state.get("fact_check_results", []))
@@ -318,56 +264,28 @@ async def search_for_evidence(state: GraphState, search_query_model) -> Dict:
     serper_api_key = os.getenv("SERPER_API_KEY")
     if not serper_api_key:
         print("Warning: SERPER_API_KEY not found. Skipping web search.")
-        current_results = state.get("fact_check_results", [])
-        current_results.append({
-            "claim": claim, 
-            "explanation": "Web search unavailable - API key not configured.",
-            "false_confidence_score": 0.5
-        })
-        return {"fact_check_results": current_results}
+        return _add_fact_check_result(state, claim, "Web search unavailable - API key not configured.", 0.5)
     
-    # Generate search queries
+    # Generate search query (keeping original approach but simplified)
     query_gen_prompt = ChatPromptTemplate.from_template(
-        "Generate 3 diverse search queries to verify this claim: \"{claim}\"\n"
-        "Return just the queries, one per line."
+        "Generate 1 focused search query to verify this claim: \"{claim}\"\n"
+        "Return just the query."
     )
-    query_gen_chain = query_gen_prompt | search_query_model | StrOutputParser()
     
     try:
-        queries_str = await query_gen_chain.ainvoke({"claim": claim})
-        queries = [q.strip().lstrip("123. ").strip("\"") for q in queries_str.strip().split('\n') if q.strip()]
-        queries = queries[:3]  # Limit to 3 queries
+        query_gen_chain = query_gen_prompt | search_query_model | StrOutputParser()
+        query = await query_gen_chain.ainvoke({"claim": claim})
+        query = query.strip().strip("\"")
     except Exception as e:
-        print(f"Error generating search queries: {e}")
-        queries = [claim]  # Fallback to using the claim itself
-    
-    evidence = []
+        print(f"Error generating search query: {e}")
+        query = claim  # Fallback to using the claim itself
     
     # Search for evidence
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        for query in queries:
-            print(f"  -> Searching for: '{query}'")
-            payload = json.dumps({"q": query})
-            headers = {'X-API-KEY': serper_api_key, 'Content-Type': 'application/json'}
-            
-            try:
-                response = await client.post("https://google.serper.dev/search", headers=headers, content=payload)
-                response.raise_for_status()
-                results = response.json()
-                
-                # Extract top 2 results from each query
-                for item in results.get('organic', [])[:2]:
-                    evidence.append({
-                        "source": item.get('link'),
-                        "snippet": item.get('snippet')
-                    })
-                
-                await asyncio.sleep(1)  # Rate limiting
-                
-            except Exception as e:
-                print(f"Error searching for query '{query}': {e}")
+    await asyncio.sleep(3)
+    evidence = await _search_web(query, serper_api_key)
     
-    # Analyze the evidence
+    # Analyze the evidence (keeping original detailed prompt)
+    await asyncio.sleep(5)
     analysis_prompt = ChatPromptTemplate.from_template(
         """You are an expert fact-checker. Use your internal knowledge and critically evaluate the provided evidence.
         
@@ -380,25 +298,50 @@ async def search_for_evidence(state: GraphState, search_query_model) -> Dict:
         - "false_confidence_score": A number from 0.0 to 1.0 (0.0 = definitely true, 1.0 = definitely false)
         """
     )
-    analysis_chain = analysis_prompt | search_query_model | StrOutputParser()
     
     try:
+        analysis_chain = analysis_prompt | search_query_model | StrOutputParser()
         response_text = await analysis_chain.ainvoke({"claim": claim, "evidence": json.dumps(evidence)})
         json_text = response_text.strip().lstrip("```json").rstrip("```").strip()
         verdict_data = json.loads(json_text)
     except Exception as e:
         print(f"Error analyzing evidence: {e}")
-        verdict_data = {
-            "explanation": "Analysis failed due to technical error.", 
-            "false_confidence_score": 0.5
-        }
+        verdict_data = {"explanation": "Analysis failed due to technical error.", "false_confidence_score": 0.5}
     
-    # Add result to the list
-    current_results = state.get("fact_check_results", [])
-    current_results.append({"claim": claim, **verdict_data})
-    
-    return {"fact_check_results": current_results}
+    return _add_fact_check_result(state, claim, verdict_data["explanation"], verdict_data["false_confidence_score"])
 
+async def _search_web(query: str, api_key: str) -> List[Dict]:
+    """Search web for evidence."""
+    evidence = []
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            payload = json.dumps({"q": query})
+            headers = {'X-API-KEY': api_key, 'Content-Type': 'application/json'}
+            
+            response = await client.post("https://google.serper.dev/search", headers=headers, content=payload)
+            response.raise_for_status()
+            results = response.json()
+            
+            # Extract top 3 results
+            for item in results.get('organic', [])[:3]:
+                evidence.append({
+                    "source": item.get('link'),
+                    "snippet": item.get('snippet')
+                })
+    except Exception as e:
+        print(f"Error searching for query '{query}': {e}")
+    
+    return evidence
+
+def _add_fact_check_result(state: GraphState, claim: str, explanation: str, score: float) -> Dict:
+    """Add fact-check result to state."""
+    current_results = state.get("fact_check_results", [])
+    current_results.append({
+        "claim": claim, 
+        "explanation": explanation,
+        "false_confidence_score": score
+    })
+    return {"fact_check_results": current_results}
 
 def should_continue_fact_checking(state: GraphState) -> str:
     """Conditional edge to decide if we should continue fact-checking."""

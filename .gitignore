@@ -73,6 +73,11 @@ daily_digest.html
 .gradio_cache/
 /src/csgy6613_ai_project/.gradio/
 
+# Node.js / Frontend
+frontend/node_modules/
+frontend/build/
+.pnp.*
+
 # OS-generated files
 .DS_Store
 .DS_Store?

@@ -19,7 +19,7 @@ def setup_environment():
 def initialize_llms():
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     flash_model = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", google_api_key=gemini_api_key, temperature=0.2)
-    pro_model = ChatGoogleGenerativeAI(model="gemini-1.5-pro-latest", google_api_key=gemini_api_key, temperature=0.3)
+    pro_model = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", google_api_key=gemini_api_key, temperature=0.3)
     return pro_model, flash_model 
 
 def format_output(final_state):
@@ -67,45 +67,27 @@ def format_output(final_state):
 
     return summary_output, chapter_report, fact_check_report
 
-async def gradio_process(url, app_graph):
-    """Processes the YouTube URL and yields updates for the Gradio interface."""
-    summary_output = "*Processing...*"
-    chapter_output = "*Processing...*"
-    fact_check_output = "*Processing...*"
-    activity_log = "▶️ **Starting Analysis**\n"
-    yield summary_output, chapter_output, fact_check_output, activity_log
-    
-    final_state = {}
-    
-    try:
+def create_interface(app_graph):
+    """Creates and returns the Gradio interface with separate output panels."""
+    async def gradio_wrapper(url):
+        final_state = {}
+        activity_log = ""
+        yield "*Processing...*", "*Processing...*", "*Processing...*", "▶️ **Starting Analysis**\n"
+        
         async for event in app_graph.astream_events({"youtube_url": url}, version="v1"):
             kind = event["event"]
-            if kind == "on_chain_start":
-                activity_log += f"⏳ **Running:** `{event['name']}`\n"
-                yield summary_output, chapter_output, fact_check_output, activity_log
-            elif kind == "on_chain_end":
-                if event["name"] != "LangGraph":
-                    activity_log += f"✅ **Finished:** `{event['name']}`\n"
-                    yield summary_output, chapter_output, fact_check_output, activity_log
-                else:
-                    final_state = event["data"]["output"]
-
+            if kind == "on_chain_end" and event["name"] == "LangGraph":
+                final_state = event["data"]["output"]
+        
         if isinstance(final_state, list):
             final_state = final_state[-1]
 
-        summary_output, chapter_output, fact_check_output = format_output(final_state)
+        summary, chapters, fact_check = format_output(final_state)
         activity_log += "✅ **Done!**"
-        yield summary_output, chapter_output, fact_check_output, activity_log
+        yield summary, chapters, fact_check, activity_log
 
-    except Exception as e:
-        error_message = f"## ❌ Error\n\nAn unexpected error occurred: {e}"
-        activity_log += f"\n❌ **Error:** {e}"
-        yield error_message, error_message, error_message, activity_log
-
-def create_interface(app_graph):
-    """Creates and returns the Gradio interface."""
-    with gr.Blocks() as iface:
-        gr.Markdown("# 🤖 AI Content Analyzer (v2.1)")
+    with gr.Blocks(theme=gr.themes.Soft()) as iface:
+        gr.Markdown("# 🤖 AI Content Analyzer (v2.0)")
         with gr.Row():
             url_input = gr.Textbox(lines=1, placeholder="Enter a YouTube video URL here...", label="YouTube URL", scale=4)
             submit_button = gr.Button("Analyze", variant="primary", scale=1)
@@ -120,7 +102,7 @@ def create_interface(app_graph):
              activity_log_output = gr.Markdown(label="Agent Activity Log")
 
         submit_button.click(
-            fn=lambda url: gradio_process(url, app_graph),
+            fn=gradio_wrapper,
             inputs=url_input,
             outputs=[summary_output, chapter_output, fact_check_output, activity_log_output]
         )
