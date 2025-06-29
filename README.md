@@ -1,6 +1,6 @@
 # Chat with Your Video Library
 
-*CS-GY 6613 AI Project*
+
 
 ---
 
