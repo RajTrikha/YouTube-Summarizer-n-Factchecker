@@ -23,10 +23,10 @@ Primary goal: evolve from YouTube-only summarizer into a cross-media product wit
 - [x] Add execution tracker
 
 ### Slice 1: Data contracts and API foundation
-- [ ] Add media-type model and ingestion request schema
-- [ ] Add `POST /ingest` endpoint (non-breaking)
-- [ ] Keep `POST /analyze` as compatibility wrapper for YouTube
-- [ ] Add response shape for mixed-media list cards
+- [x] Add media-type model and ingestion request schema
+- [x] Add `POST /ingest` endpoint (non-breaking)
+- [x] Keep `POST /analyze` as compatibility wrapper for YouTube
+- [x] Add response shape for mixed-media list cards
 
 ### Slice 2: Pipeline compatibility layer
 - [ ] Generalize analysis task input from `youtube_url` to `content_item`
