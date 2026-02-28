@@ -59,6 +59,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+venv_anthropic/
+sendgrid.env
 
 # Specific to this project
 /src/csgy6613_ai_project/venv/
@@ -72,6 +74,7 @@ daily_digest.html
 # Gradio
 .gradio_cache/
 /src/csgy6613_ai_project/.gradio/
+node_modules/
 
 # OS-generated files
 .DS_Store
@@ -80,4 +83,4 @@ daily_digest.html
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-Thumbs.db 
+Thumbs.db
