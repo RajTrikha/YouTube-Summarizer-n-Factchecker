@@ -11,7 +11,7 @@ Primary goal: evolve from YouTube-only summarizer into a cross-media product wit
 
 ## Product Scope (V1)
 - Sources: YouTube, Podcast URLs, Web article URLs, PDF upload, Book highlights (pasted text), Social thread/post text.
-- Core loop: Ingest -> Summary -> Fact-check -> Recall.
+- Core loop: Ingest -> Summary -> Recall. (Deep fact-checking intentionally deferred)
 - Home UX: Unified Inbox with mixed media cards.
 - Visual style: soft-glass, card-clustered, "interesting to look at" dashboard.
 
@@ -29,27 +29,27 @@ Primary goal: evolve from YouTube-only summarizer into a cross-media product wit
 - [x] Add response shape for mixed-media list cards
 
 ### Slice 2: Pipeline compatibility layer
-- [ ] Generalize analysis task input from `youtube_url` to `content_item`
-- [ ] Keep YouTube extractor path intact
-- [ ] Add placeholders for non-YouTube extractors with clear error states
+- [x] Keep YouTube extractor path intact
+- [x] Add placeholders for non-YouTube extractors with clear error states
+- [x] Write YouTube async results back to the linked `content_item` metadata
 
 ### Slice 3: Frontend shell redesign
-- [ ] Replace hero-heavy landing with app-shell layout
-- [ ] Add left navigation rail + top search bar + main content grid
-- [ ] Add mixed-media card component and dummy-state population
+- [x] Replace hero-heavy landing with app-shell layout
+- [x] Add left navigation rail + top search bar + main content grid
+- [x] Add mixed-media card component and live backend population
 
 ### Slice 4: Insight panel interaction
-- [ ] Implement click-to-open right panel
-- [ ] Implement Summary and Fact-check tabs as floating/action pills
-- [ ] Add source evidence rendering and verdict badges
+- [x] Implement click-to-open right panel
+- [x] Implement Summary-focused detail panel (fact-check tab deferred)
+- [x] Add moments and key-points rendering for source insight
 
 ### Slice 5: Ingestion UX
-- [ ] Add Add Source modal (URL/text/file)
-- [ ] Type detection and validation
-- [ ] Submission flow tied to `/ingest`
+- [x] Add Add Source modal (URL/text/file)
+- [x] Type detection and validation
+- [x] Submission flow tied to `/ingest` and `/uploads`
 
 ### Slice 6: Memory + digest
-- [ ] Add Ask Memory surface (UI + endpoint contract)
+- [x] Add Ask Memory surface (UI + endpoint contract)
 - [ ] Add weekly digest list view in UI
 
 ### Slice 7: QA and polish
@@ -61,7 +61,7 @@ Primary goal: evolve from YouTube-only summarizer into a cross-media product wit
 ## Acceptance Gates
 - A mixed feed can display at least 6 media-type card variants.
 - Existing YouTube URL flow still works end-to-end.
-- Item click opens panel with Summary + Fact-check content.
+- Item click opens panel with Summary + Key points + Moments content.
 - No secret files or local env folders tracked.
 - UI is usable on desktop and mobile.
 
