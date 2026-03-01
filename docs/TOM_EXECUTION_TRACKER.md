@@ -58,6 +58,19 @@ Primary goal: evolve from YouTube-only summarizer into a cross-media product wit
 - [ ] Error and empty-state hardening
 - [ ] Smoke test existing YouTube-only path
 
+### Slice 8: Premium lanes + integrations scaffold
+- [x] Replace single mixed-list UI with lane-oriented workspace (`video`, `audio`, `reading`)
+- [x] Add hover peek interactions with quick actions (`pin`, `tag`, `save`, `open`)
+- [x] Add right-side detail drawer with tabbed insight panels
+- [x] Add provider discovery API: `GET /integrations/providers`
+- [x] Add Readwise bridge scaffold APIs:
+  - `POST /integrations/readwise/connect`
+  - `POST /integrations/readwise/sync`
+  - `GET /integrations/sync-jobs/{job_id}`
+- [x] Add lane-optimized listing API: `GET /items/lanes`
+- [x] Extend ingestion modes with `highlights_file` and `provider_sync`
+- [x] Improve summary extraction fallback for async YouTube results
+
 ## Acceptance Gates
 - A mixed feed can display at least 6 media-type card variants.
 - Existing YouTube URL flow still works end-to-end.

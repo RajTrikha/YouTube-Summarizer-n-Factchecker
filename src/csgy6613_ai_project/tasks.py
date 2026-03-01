@@ -36,12 +36,23 @@ def initialize_llms():
     return flash_model, flash_model
 
 
+def _coerce_summary(payload: Any) -> str:
+    if isinstance(payload, str) and payload.strip():
+        return payload.strip()
+    if isinstance(payload, dict):
+        for key in ("overall_summary", "summary", "final_summary", "executive_summary", "text"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
+
 def _extract_item_analysis(final_state: dict[str, Any]) -> dict[str, Any]:
-    summary = final_state.get("summary")
-    if isinstance(summary, dict):
-        summary = summary.get("overall_summary")
-    if not isinstance(summary, str):
-        summary = "Summary unavailable."
+    summary = (
+        _coerce_summary(final_state.get("summary"))
+        or _coerce_summary(final_state.get("overall_summary"))
+        or _coerce_summary(final_state.get("final_summary"))
+    )
 
     key_points: list[str] = []
     moments: list[dict[str, Any]] = []
@@ -64,6 +75,15 @@ def _extract_item_analysis(final_state: dict[str, Any]) -> dict[str, Any]:
                         "text": str(chapter_summary)[:220],
                     }
                 )
+
+    if not summary:
+        chapter_summaries = [m.get("text", "") for m in moments if isinstance(m, dict)]
+        if chapter_summaries:
+            summary = " ".join(chapter_summaries[:2])[:420]
+        elif isinstance(final_state.get("transcript"), str):
+            summary = final_state["transcript"][:320]
+        else:
+            summary = "Summary unavailable."
 
     return {
         "summary": summary,

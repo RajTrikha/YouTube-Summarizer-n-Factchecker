@@ -18,6 +18,34 @@ class MediaType(str, enum.Enum):
     BOOK_HIGHLIGHTS = "book_highlights"
     SOCIAL_THREAD = "social_thread"
 
+
+class SourceProvider(str, enum.Enum):
+    YOUTUBE = "youtube"
+    SPOTIFY = "spotify"
+    RSS = "rss"
+    READWISE = "readwise"
+    KINDLE_EXPORT = "kindle_export"
+    APPLE_BOOKS_EXPORT = "apple_books_export"
+    KOBO_EXPORT = "kobo_export"
+    GOOGLE_PLAY_BOOKS_EXPORT = "google_play_books_export"
+    INSTAPAPER = "instapaper"
+    FEEDLY = "feedly"
+    MANUAL = "manual"
+
+
+class IngestionMethod(str, enum.Enum):
+    OAUTH = "oauth"
+    API_TOKEN = "api_token"
+    FILE_UPLOAD = "file_upload"
+    EMAIL_FORWARD = "email_forward"
+    URL = "url"
+
+
+class LaneType(str, enum.Enum):
+    VIDEO = "video"
+    AUDIO = "audio"
+    READING = "reading"
+
 class AnalysisTask(Base):
     __tablename__ = "analysis_tasks"
     id = Column(Integer, primary_key=True, index=True)
@@ -48,3 +76,30 @@ class ContentItem(Base):
     extra_metadata = Column("metadata", JSON, nullable=True)
     consumed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class IntegrationConnection(Base):
+    __tablename__ = "integration_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    connection_id = Column(String, unique=True, index=True, nullable=False)
+    provider = Column(Enum(SourceProvider), index=True, nullable=False)
+    status = Column(String, nullable=False, default="connected")
+    config = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class IntegrationSyncJob(Base):
+    __tablename__ = "integration_sync_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(String, unique=True, index=True, nullable=False)
+    provider = Column(Enum(SourceProvider), index=True, nullable=False)
+    mode = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="queued")
+    request_payload = Column(JSON, nullable=True)
+    result = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
